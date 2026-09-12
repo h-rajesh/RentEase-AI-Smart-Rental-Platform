@@ -18,7 +18,7 @@ export function DiscoverySection() {
           title="Properties worth looking at."
         />
 
-        <Button  variant="outline">
+        <Button variant="outline">
           <Link href="/properties">
             Browse all <ArrowRight className="size-4" />
           </Link>

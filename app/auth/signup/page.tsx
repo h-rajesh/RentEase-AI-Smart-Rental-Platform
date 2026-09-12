@@ -73,7 +73,7 @@ export default function SignUpPage() {
       }));
     };
 
-  const submit = (
+  const submit = async (
     event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
@@ -121,19 +121,64 @@ export default function SignUpPage() {
 
     setLoading(true);
 
-    window.setTimeout(() => {
-      setLoading(false);
-
-      toast.success("Account created", {
-        description: `Your ${role} workspace is ready.`,
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email,
+          phone: form.phone,
+          password: form.password,
+          role: role.toUpperCase(),
+        }),
       });
 
-      router.push(
-        role === "tenant"
-          ? "/dashboard/tenant"
-          : "/dashboard/landlord",
-      );
-    }, 900);
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = data.error || data.message || "Failed to create account.";
+        toast.error("Sign up failed", {
+          description: errorMsg,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Automatically sign in after account creation
+      const signInRes = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.password,
+          role: role.toUpperCase(),
+        }),
+      });
+
+      if (signInRes.ok) {
+        toast.success("Account created", {
+          description: `Welcome to RentEase, ${form.name.trim()}!`,
+        });
+        router.push(
+          role === "tenant"
+            ? "/dashboard/tenant"
+            : "/dashboard/landlord",
+        );
+        router.refresh();
+      } else {
+        toast.success("Account created successfully", {
+          description: "Please sign in with your credentials.",
+        });
+        router.push("/auth/signin");
+      }
+    } catch (error) {
+      console.error("Sign up error:", error);
+      toast.error("Sign up failed", {
+        description: "An unexpected error occurred. Please try again.",
+      });
+      setLoading(false);
+    }
   };
 
   return (
@@ -144,7 +189,7 @@ export default function SignUpPage() {
         <>
           Already registered?{" "}
           <Link
-            href="/signin"
+            href="/auth/signin"
             className="font-semibold text-primary"
           >
             Sign in

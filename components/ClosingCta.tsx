@@ -18,12 +18,12 @@ export function ClosingCta() {
         </h2>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Button size="lg">
-            <Link href="/auth/signup">Create your account</Link>
+          <Button size="lg" render={<Link href="/auth/signup" />}>
+            Create your account
           </Button>
 
-          <Button size="lg" variant="outline">
-            <Link href="/dashboard/landlord">List a property</Link>
+          <Button size="lg" variant="outline" render={<Link href="/dashboard/landlord" />}>
+            List a property
           </Button>
         </div>
       </Reveal>

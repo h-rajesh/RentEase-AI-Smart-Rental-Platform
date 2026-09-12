@@ -45,14 +45,12 @@ export function Hero() {
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
-            <Button size="lg" className="rounded-full px-8 py-4 text-base sm:text-lg font-semibold shadow-md gap-2.5 h-auto">
-              <Link href="/properties" className="flex items-center gap-2.5">
-                Explore Properties <ArrowRight className="size-5" />
-              </Link>
+            <Button size="lg" className="rounded-full px-8 py-4 text-base sm:text-lg font-semibold shadow-md gap-2.5 h-auto" render={<Link href="/properties" />}>
+              Explore Properties <ArrowRight className="size-5" />
             </Button>
 
-            <Button size="lg" variant="outline" className="rounded-full px-8 py-4 text-base sm:text-lg font-semibold h-auto">
-              <Link href="/rent-estimator">Estimate Your Rent</Link>
+            <Button size="lg" variant="outline" className="rounded-full px-8 py-4 text-base sm:text-lg font-semibold h-auto" render={<Link href="/rent-estimator" />}>
+              Estimate Your Rent
             </Button>
           </div>
 

@@ -40,7 +40,7 @@ export default function SignInPage() {
   const [loading, setLoading] =
     useState(false);
 
-  const submit = (
+  const submit = async (
     event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
@@ -67,19 +67,46 @@ export default function SignInPage() {
 
     setLoading(true);
 
-    window.setTimeout(() => {
-      setLoading(false);
-
-      toast.success("Signed in", {
-        description: `Welcome back to your ${role} workspace.`,
+    try {
+      const res = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          role: role.toUpperCase(),
+        }),
       });
 
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = data.message || data.error || "Failed to sign in.";
+        toast.error("Sign in failed", {
+          description: errorMsg,
+        });
+        setLoading(false);
+        return;
+      }
+
+      toast.success("Signed in", {
+        description: `Welcome back, ${data.user?.name || email}!`,
+      });
+
+      const targetRole = (data.user?.role || role.toUpperCase()).toLowerCase();
       router.push(
-        role === "tenant"
-          ? "/dashboard/tenant"
-          : "/dashboard/landlord",
+        targetRole === "landlord"
+          ? "/dashboard/landlord"
+          : "/dashboard/tenant",
       );
-    }, 800);
+      router.refresh();
+    } catch (error) {
+      console.error("Sign in error:", error);
+      toast.error("Sign in failed", {
+        description: "An unexpected error occurred. Please try again.",
+      });
+      setLoading(false);
+    }
   };
 
   return (
@@ -187,8 +214,7 @@ export default function SignInPage() {
         </Button>
 
         <p className="text-center text-xs text-muted-foreground">
-          Demo build — no credentials are
-          stored or transmitted.
+          Secure authentication powered by RentEase.
         </p>
       </form>
     </AuthShell>
