@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState ,useRef} from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-
+import { uploadPropertyImage } from "@/lib/supabase/storage";
 import {
   Select,
   SelectContent,
@@ -95,8 +95,14 @@ export default function AddPropertyClient() {
   const [amenities, setAmenities] =
     useState<string[]>([]);
 
-  const [images, setImages] =
-    useState<string[]>([]);
+  const [images, setImages] = useState<
+  {
+    file: File;
+    preview: string;
+  }[]
+>([]);
+
+const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [errors, setErrors] =
     useState<Record<string, string | undefined>>({});
@@ -122,186 +128,271 @@ export default function AddPropertyClient() {
     }));
   };
 
-  const submit = (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
+const submit = async (
+  event: React.FormEvent<HTMLFormElement>,
+) => {
+  event.preventDefault();
 
-    const next: Record<string, string> = {};
+  const next: Record<string, string> = {};
 
-    if (form.title.trim().length < 5) {
-      next.title =
-        "Give the listing a descriptive title.";
-    }
+  if (form.title.trim().length < 5) {
+    next.title =
+      "Give the listing a descriptive title.";
+  }
 
-    if (form.locality.trim().length < 3) {
-      next.locality =
-        "Add the locality or neighbourhood.";
-    }
+  if (form.locality.trim().length < 3) {
+    next.locality =
+      "Add the locality or neighbourhood.";
+  }
 
-    if (
-      !form.rent ||
-      Number(form.rent) < 1000
-    ) {
-      next.rent =
-        "Enter a monthly rent in rupees.";
-    }
+  if (
+    !form.rent ||
+    Number(form.rent) < 1000
+  ) {
+    next.rent =
+      "Enter a monthly rent in rupees.";
+  }
 
-    if (
-      !form.area ||
-      Number(form.area) < 150
-    ) {
-      next.area =
-        "Enter the carpet area in sq ft.";
-    }
+  if (
+    !form.area ||
+    Number(form.area) < 150
+  ) {
+    next.area =
+      "Enter the carpet area in sq ft.";
+  }
 
-    if (
-      form.description.trim().length < 40
-    ) {
-      next.description =
-        "Write at least 40 characters so tenants know what to expect.";
-    }
+  if (
+    form.description.trim().length < 40
+  ) {
+    next.description =
+      "Write at least 40 characters so tenants know what to expect.";
+  }
 
-    setErrors(next);
+  setErrors(next);
 
-    if (Object.keys(next).length > 0) {
-      return;
-    }
+  if (Object.keys(next).length > 0) {
+    return;
+  }
 
-    setLoading(true);
-    setAssessment(null);
+  setLoading(true);
+  setAssessment(null);
 
-    window.setTimeout(() => {
-      const estimate = estimateRent({
-        city: form.city,
+  try {
+    const response = await fetch("/api/properties", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: form.title.trim(),
+        description: form.description.trim(),
         type: form.type,
-        beds: Number(form.beds),
-        baths: Number(form.baths),
+        city: form.city,
+        locality: form.locality.trim(),
+
+        rent: Number(form.rent),
         area: Number(form.area),
+        bedrooms: Number(form.beds),
+        bathrooms: Number(form.baths),
         furnishing: form.furnishing,
-        amenities,
-      });
 
-      const listed = Number(form.rent);
+        // Coordinates will be added when
+        // location handling is implemented.
+        latitude: null,
+        longitude: null,
+      }),
+    });
 
-      const verdict = priceVerdict(
-        listed,
-        estimate,
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Unable to create property."
       );
+    }
 
-      const completeness = Math.min(
-        100,
-        55 +
-          images.length * 9 +
-          amenities.length * 3 +
-          (form.description.length > 120
-            ? 12
-            : 4),
+    const propertyId = data.property.id;
+
+for (const [index, image] of images.entries()) {
+  const uploaded = await uploadPropertyImage(
+    image.file,
+    propertyId,
+  );
+
+  const imageResponse = await fetch(
+    `/api/properties/${propertyId}/images`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: uploaded.url,
+        storageKey: uploaded.storageKey,
+        sortOrder: index,
+      }),
+    },
+  );
+
+  const imageData = await imageResponse.json();
+
+  if (!imageResponse.ok) {
+    throw new Error(
+      imageData.error ||
+        `Unable to save image ${index + 1}.`,
+    );
+  }
+}
+
+    /*
+     * Property has now been saved in PostgreSQL.
+     *
+     * Keep the existing demo assessment temporarily.
+     * The real Trust Score and AI Rent Estimator
+     * will be connected in their respective modules.
+     */
+
+    const estimate = estimateRent({
+      city: form.city,
+      type: form.type,
+      beds: Number(form.beds),
+      baths: Number(form.baths),
+      area: Number(form.area),
+      furnishing: form.furnishing,
+      amenities,
+    });
+
+    const listed = Number(form.rent);
+
+    const verdict = priceVerdict(
+      listed,
+      estimate,
+    );
+
+    const completeness = Math.min(
+      100,
+      55 +
+        images.length * 9 +
+        amenities.length * 3 +
+        (form.description.length > 120
+          ? 12
+          : 4),
+    );
+
+    const priceConsistency =
+      verdict.tone === "low"
+        ? 92
+        : verdict.tone === "moderate"
+          ? 74
+          : 52;
+
+    const imageSimilarity =
+      images.length >= 3
+        ? 90
+        : images.length > 0
+          ? 76
+          : 60;
+
+    const locationConsistency =
+      form.locality.length > 4
+        ? 90
+        : 72;
+
+    const infoQuality = Math.min(
+      96,
+      50 +
+        Math.round(
+          form.description.length / 6,
+        ),
+    );
+
+    const signals = [
+      {
+        label: "Listing completeness",
+        score: completeness,
+      },
+      {
+        label: "Price consistency",
+        score: priceConsistency,
+      },
+      {
+        label: "Image similarity",
+        score: imageSimilarity,
+      },
+      {
+        label: "Location consistency",
+        score: locationConsistency,
+      },
+      {
+        label:
+          "Listing information quality",
+        score: infoQuality,
+      },
+    ];
+
+    const score = Math.round(
+      signals.reduce(
+        (sum, signal) =>
+          sum + signal.score,
+        0,
+      ) / signals.length,
+    );
+
+    const issues: string[] = [];
+
+    if (images.length < 3) {
+      issues.push(
+        "Add at least three photos, including one exterior shot.",
       );
+    }
 
-      const priceConsistency =
-        verdict.tone === "low"
-          ? 92
-          : verdict.tone === "moderate"
-            ? 74
-            : 52;
-
-      const imageSimilarity =
-        images.length >= 3
-          ? 90
-          : images.length > 0
-            ? 76
-            : 60;
-
-      const locationConsistency =
-        form.locality.length > 4
-          ? 90
-          : 72;
-
-      const infoQuality = Math.min(
-        96,
-        50 +
-          Math.round(
-            form.description.length / 6,
-          ),
+    if (verdict.tone !== "low") {
+      issues.push(
+        `Listed rent is ${verdict.label.toLowerCase()} for this configuration.`,
       );
+    }
 
-      const signals = [
-        {
-          label: "Listing completeness",
-          score: completeness,
-        },
-        {
-          label: "Price consistency",
-          score: priceConsistency,
-        },
-        {
-          label: "Image similarity",
-          score: imageSimilarity,
-        },
-        {
-          label: "Location consistency",
-          score: locationConsistency,
-        },
-        {
-          label:
-            "Listing information quality",
-          score: infoQuality,
-        },
-      ];
-
-      const score = Math.round(
-        signals.reduce(
-          (sum, signal) =>
-            sum + signal.score,
-          0,
-        ) / signals.length,
+    if (amenities.length < 3) {
+      issues.push(
+        "List the building amenities tenants filter by.",
       );
+    }
 
-      const issues: string[] = [];
-
-      if (images.length < 3) {
-        issues.push(
-          "Add at least three photos, including one exterior shot.",
-        );
-      }
-
-      if (verdict.tone !== "low") {
-        issues.push(
-          `Listed rent is ${verdict.label.toLowerCase()} for this configuration.`,
-        );
-      }
-
-      if (amenities.length < 3) {
-        issues.push(
-          "List the building amenities tenants filter by.",
-        );
-      }
-
-      if (form.description.length < 140) {
-        issues.push(
-          "Expand the description with floor, facing and nearby landmarks.",
-        );
-      }
-
-      setAssessment({
-        score,
-        signals,
-        issues,
-        estimate,
-        listed,
-      });
-
-      setLoading(false);
-
-      toast.success(
-        "Listing submitted for review",
-        {
-          description: `Trust assessment generated — score ${score}/100.`,
-        },
+    if (form.description.length < 140) {
+      issues.push(
+        "Expand the description with floor, facing and nearby landmarks.",
       );
-    }, 1000);
-  };
+    }
+
+    setAssessment({
+      score,
+      signals,
+      issues,
+      estimate,
+      listed,
+    });
+
+    toast.success(
+      "Property created successfully",
+      {
+        description: `Property saved as a draft — assessment score ${score}/100.`,
+      },
+    );
+  } catch (error) {
+    console.error(
+      "Create property error:",
+      error,
+    );
+
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Unable to create property.",
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   const toggleAmenity = (
     amenity: string,
@@ -315,12 +406,77 @@ export default function AddPropertyClient() {
     );
   };
 
-  const addImage = () => {
-    setImages((current) => [
-      ...current,
-      `IMG ${current.length + 1}`,
-    ]);
-  };
+const handleImageSelect = (
+  event: React.ChangeEvent<HTMLInputElement>,
+) => {
+  const files = Array.from(
+    event.target.files ?? [],
+  );
+
+  if (files.length === 0) {
+    return;
+  }
+
+  const validFiles = files.filter((file) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error(
+        `${file.name} is not a valid image.`,
+      );
+
+      return false;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(
+        `${file.name} is larger than 5 MB.`,
+      );
+
+      return false;
+    }
+
+    return true;
+  });
+
+  const remainingSlots = 10 - images.length;
+
+  const filesToAdd = validFiles.slice(
+    0,
+    remainingSlots,
+  );
+
+  if (validFiles.length > remainingSlots) {
+    toast.error(
+      "You can upload a maximum of 10 images.",
+    );
+  }
+
+  const newImages = filesToAdd.map((file) => ({
+    file,
+    preview: URL.createObjectURL(file),
+  }));
+
+  setImages((current) => [
+    ...current,
+    ...newImages,
+  ]);
+
+  // Allows selecting the same file again later.
+  event.target.value = "";
+};
+const removeImage = (index: number) => {
+  setImages((current) => {
+    const image = current[index];
+
+    if (image) {
+      URL.revokeObjectURL(image.preview);
+    }
+
+    return current.filter(
+      (_, imageIndex) =>
+        imageIndex !== index,
+    );
+  });
+};
 
   return (
     <DashboardShell
@@ -633,32 +789,55 @@ export default function AddPropertyClient() {
 
           {/* Images */}
           <FormField label="Property images">
-            <div className="flex flex-wrap items-center gap-3">
-              {images.map(
-                (image, index) => (
-                  <span
-                    key={`${image}-${index}`}
-                    className="grid size-16 place-items-center rounded-lg border border-border bg-surface text-xs text-muted-foreground"
-                  >
-                    {image}
-                  </span>
-                ),
-              )}
+           <div className="flex flex-wrap gap-3">
+  {images.map((image, index) => (
+    <div
+      key={`${image.preview}-${index}`}
+      className="relative size-24 overflow-hidden rounded-lg border border-border bg-surface"
+    >
+      <img
+        src={image.preview}
+        alt={`Property image ${index + 1}`}
+        className="h-full w-full object-cover"
+      />
 
-              <button
-                type="button"
-                onClick={addImage}
-                className="grid size-16 place-items-center rounded-lg border border-dashed border-border bg-surface text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                aria-label="Add image"
-              >
-                <ImagePlus className="size-5" />
-              </button>
-            </div>
+      <button
+        type="button"
+        onClick={() => removeImage(index)}
+        className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-white"
+        aria-label={`Remove image ${index + 1}`}
+      >
+        ×
+      </button>
+    </div>
+  ))}
 
-            <p className="mt-2 text-xs text-muted-foreground">
-              Three or more photos measurably
-              improve listing completeness.
-            </p>
+  {images.length < 10 && (
+    <button
+      type="button"
+      onClick={() =>
+        fileInputRef.current?.click()
+      }
+      className="grid size-24 place-items-center rounded-lg border border-dashed border-border bg-surface text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+      aria-label="Add property image"
+    >
+      <ImagePlus className="size-5" />
+    </button>
+  )}
+
+  <input
+    ref={fileInputRef}
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    multiple
+    onChange={handleImageSelect}
+    className="hidden"
+  />
+</div>
+
+<p className="mt-2 text-xs text-muted-foreground">
+  Upload up to 10 images. Maximum 5 MB per image.
+</p>
           </FormField>
 
           {/* Submit */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   Section,
@@ -10,7 +10,7 @@ import { PropertyCard } from "@/components/rentease/PropertyCard";
 import { Button } from "@/components/ui/button";
 import {
   CITIES,
-  PROPERTIES,
+  type Property,
 } from "@/lib/rentease-data";
 import { cn } from "@/lib/utils";
 
@@ -18,20 +18,140 @@ const SORTS = [
   "Recommended",
   "Rent: low to high",
   "Rent: high to low",
-  "Trust Score",
 ] as const;
 
 type SortOption = (typeof SORTS)[number];
 
+type ApiProperty = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  city: string;
+  locality: string;
+  latitude: number | null;
+  longitude: number | null;
+  rent: number;
+  area: number;
+  bedrooms: number;
+  bathrooms: number;
+  furnishing: string;
+  status: string;
+  images: {
+    id: string;
+    url: string;
+    storageKey: string | null;
+    sortOrder: number;
+  }[];
+  owner: {
+    id: string;
+    name: string;
+    createdAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+function adaptApiPropertyToCardProperty(apiProp: ApiProperty): Property {
+  const imageUrls =
+    apiProp.images.length > 0
+      ? apiProp.images.map((img) => img.url)
+      : ["https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=800&q=80"];
+
+  return {
+    id: apiProp.id,
+    name: apiProp.title,
+    type: apiProp.type,
+    city: apiProp.city,
+    locality: apiProp.locality,
+    rent: apiProp.rent,
+    beds: apiProp.bedrooms,
+    baths: apiProp.bathrooms,
+    area: apiProp.area,
+    furnishing:
+      (apiProp.furnishing as "Unfurnished" | "Semi-furnished" | "Fully furnished") ||
+      "Semi-furnished",
+    trustScore: 88,
+    images: imageUrls,
+    amenities: ["Power Backup", "Security", "Parking"],
+    description: apiProp.description,
+    landlord: {
+      name: apiProp.owner.name || "Landlord",
+      since: apiProp.owner.createdAt
+        ? new Date(apiProp.owner.createdAt).getFullYear().toString()
+        : "2024",
+      verifiedContact: true,
+      responseTime: "< 1 hour",
+    },
+    estimate: {
+      low: Math.round(apiProp.rent * 0.92),
+      high: Math.round(apiProp.rent * 1.08),
+    },
+    signals: [
+      {
+        label: "Price consistency",
+        score: 90,
+        note: "Aligned with market rates",
+      },
+    ],
+    status: "Active",
+  };
+}
+
 export default function PropertiesPage() {
+  const [properties, setProperties] =
+    useState<ApiProperty[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
   const [city, setCity] =
     useState<string>("All");
 
   const [sort, setSort] =
     useState<SortOption>("Recommended");
 
+  useEffect(() => {
+    async function fetchProperties() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(
+          "/api/properties"
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            "Unable to load properties."
+          );
+        }
+
+        const data = await response.json();
+
+        setProperties(data.properties ?? []);
+      } catch (err) {
+        console.error(
+          "Error loading properties:",
+          err
+        );
+
+        setError(
+          "Unable to load properties. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchProperties();
+  }, []);
+
   const results = useMemo(() => {
-    const list = PROPERTIES.filter(
+    const list = properties.filter(
       (property) =>
         city === "All" ||
         property.city === city,
@@ -48,16 +168,10 @@ export default function PropertiesPage() {
           (a, b) => b.rent - a.rent,
         );
 
-      case "Trust Score":
-        return [...list].sort(
-          (a, b) =>
-            b.trustScore - a.trustScore,
-        );
-
       default:
         return list;
     }
-  }, [city, sort]);
+  }, [properties, city, sort]);
 
   return (
     <Section>
@@ -113,35 +227,53 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      {/* Result count */}
-      <p className="mt-5 text-sm text-muted-foreground">
-        {results.length}{" "}
-        {results.length === 1
-          ? "property"
-          : "properties"}{" "}
-        available
-        {city !== "All"
-          ? ` in ${city}`
-          : ""}
-      </p>
+      {loading && (
+        <p className="mt-8 text-sm text-muted-foreground">
+          Loading properties...
+        </p>
+      )}
 
-      {/* Results */}
-      {results.length === 0 ? (
-        <EmptyState
-          onReset={() => setCity("All")}
-        />
-      ) : (
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {results.map(
-            (property, index) => (
-              <PropertyCard
-                key={property.id}
-                property={property}
-                index={index}
-              />
-            ),
-          )}
+      {error && !loading && (
+        <div className="mt-8 rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center">
+          <p className="text-sm text-destructive">
+            {error}
+          </p>
         </div>
+      )}
+
+      {!loading && !error && (
+        <>
+          {/* Result count */}
+          <p className="mt-5 text-sm text-muted-foreground">
+            {results.length}{" "}
+            {results.length === 1
+              ? "property"
+              : "properties"}{" "}
+            available
+            {city !== "All"
+              ? ` in ${city}`
+              : ""}
+          </p>
+
+          {/* Results */}
+          {results.length === 0 ? (
+            <EmptyState
+              onReset={() => setCity("All")}
+            />
+          ) : (
+            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {results.map(
+                (property, index) => (
+                  <PropertyCard
+                    key={property.id}
+                    property={adaptApiPropertyToCardProperty(property)}
+                    index={index}
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </>
       )}
     </Section>
   );

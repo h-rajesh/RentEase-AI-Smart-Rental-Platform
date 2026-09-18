@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import {
@@ -46,12 +46,14 @@ export default function SearchClient() {
       lowerRisk: false,
     });
 
-  useEffect(() => {
+  const [prevUrlCity, setPrevUrlCity] = useState(urlCity);
+  if (prevUrlCity !== urlCity) {
+    setPrevUrlCity(urlCity);
     setFilters((current) => ({
       ...current,
       city: urlCity,
     }));
-  }, [urlCity]);
+  }
 
   const [showAdvanced, setShowAdvanced] =
     useState(false);

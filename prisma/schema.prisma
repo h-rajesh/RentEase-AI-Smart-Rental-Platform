@@ -53,7 +53,7 @@ model Property {
   city     String
   locality String
 
-  latitute  Float?
+  latitude  Float?
   longitude Float?
 
   rent       Decimal @db.Decimal(12, 2)
@@ -61,6 +61,7 @@ model Property {
   bedrooms   Int
   bathrooms  Int
   furnishing String
+  amentities String[]
 
   status PropertyStatus @default(DRAFT)
 
