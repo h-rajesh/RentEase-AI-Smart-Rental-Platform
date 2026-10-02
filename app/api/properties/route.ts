@@ -1,6 +1,39 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireRole } from "@/lib/auth/authorization";
+import { PROPERTIES } from "@/lib/rentease-data";
+
+function getFallbackProperties() {
+  return PROPERTIES.map((p) => ({
+    id: p.id,
+    title: p.name,
+    description: p.description,
+    type: p.type,
+    city: p.city,
+    locality: p.locality,
+    latitude: null,
+    longitude: null,
+    rent: p.rent,
+    area: p.area,
+    bedrooms: p.beds,
+    bathrooms: p.baths,
+    furnishing: p.furnishing,
+    status: "PUBLISHED",
+    images: p.images.map((img, i) => ({
+      id: `${p.id}-img-${i}`,
+      url: typeof img === "string" ? img : img.src,
+      storageKey: null,
+      sortOrder: i,
+    })),
+    owner: {
+      id: "landlord-1",
+      name: p.landlord.name,
+      createdAt: new Date().toISOString(),
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+}
 
 export async function POST(request: Request) {
   try {
@@ -40,132 +73,132 @@ export async function POST(request: Request) {
     } = body;
 
     // 3. Validate required fields
-if (
-  typeof title !== "string" ||
-  typeof description !== "string" ||
-  typeof type !== "string" ||
-  typeof city !== "string" ||
-  typeof locality !== "string" ||
-  typeof furnishing !== "string" ||
-  rent === undefined ||
-  area === undefined ||
-  bedrooms === undefined ||
-  bathrooms === undefined
-) {
-  return NextResponse.json(
-    {
-      error: "All required property fields must be provided.",
-    },
-    { status: 400 }
-  );
-}
+    if (
+      typeof title !== "string" ||
+      typeof description !== "string" ||
+      typeof type !== "string" ||
+      typeof city !== "string" ||
+      typeof locality !== "string" ||
+      typeof furnishing !== "string" ||
+      rent === undefined ||
+      area === undefined ||
+      bedrooms === undefined ||
+      bathrooms === undefined
+    ) {
+      return NextResponse.json(
+        {
+          error: "All required property fields must be provided.",
+        },
+        { status: 400 }
+      );
+    }
 
-// 4. Normalize text fields
-const normalizedTitle = title.trim();
-const normalizedDescription = description.trim();
-const normalizedType = type.trim();
-const normalizedCity = city.trim();
-const normalizedLocality = locality.trim();
-const normalizedFurnishing = furnishing.trim();
+    // 4. Normalize text fields
+    const normalizedTitle = title.trim();
+    const normalizedDescription = description.trim();
+    const normalizedType = type.trim();
+    const normalizedCity = city.trim();
+    const normalizedLocality = locality.trim();
+    const normalizedFurnishing = furnishing.trim();
 
-// 5. Validate text fields
-if (
-  !normalizedTitle ||
-  !normalizedDescription ||
-  !normalizedType ||
-  !normalizedCity ||
-  !normalizedLocality ||
-  !normalizedFurnishing
-) {
-  return NextResponse.json(
-    {
-      error: "Property text fields cannot be empty.",
-    },
-    { status: 400 }
-  );
-}
+    // 5. Validate text fields
+    if (
+      !normalizedTitle ||
+      !normalizedDescription ||
+      !normalizedType ||
+      !normalizedCity ||
+      !normalizedLocality ||
+      !normalizedFurnishing
+    ) {
+      return NextResponse.json(
+        {
+          error: "Property text fields cannot be empty.",
+        },
+        { status: 400 }
+      );
+    }
 
+    // 6. Validate numeric values
+    const numericRent = Number(rent);
+    const numericArea = Number(area);
+    const numericBedrooms = Number(bedrooms);
+    const numericBathrooms = Number(bathrooms);
 
-  // 6. Validate numeric values
-const numericRent = Number(rent);
-const numericArea = Number(area);
-const numericBedrooms = Number(bedrooms);
-const numericBathrooms = Number(bathrooms);
+    if (
+      !Number.isFinite(numericRent) ||
+      numericRent <= 0 ||
+      numericRent > 10000000 ||
+      !Number.isFinite(numericArea) ||
+      numericArea <= 0 ||
+      numericArea > 1000000 ||
+      !Number.isInteger(numericBedrooms) ||
+      numericBedrooms < 0 ||
+      numericBedrooms > 20 ||
+      !Number.isInteger(numericBathrooms) ||
+      numericBathrooms < 0 ||
+      numericBathrooms > 20
+    ) {
+      return NextResponse.json(
+        {
+          error: "Invalid property numeric values.",
+        },
+        { status: 400 }
+      );
+    }
 
-if (
-  !Number.isFinite(numericRent) ||
-  numericRent <= 0 ||
-  numericRent > 10000000 ||
-  !Number.isFinite(numericArea) ||
-  numericArea <= 0 ||
-  numericArea > 1000000 ||
-  !Number.isInteger(numericBedrooms) ||
-  numericBedrooms < 0 ||
-  numericBedrooms > 20 ||
-  !Number.isInteger(numericBathrooms) ||
-  numericBathrooms < 0 ||
-  numericBathrooms > 20
-) {
-  return NextResponse.json(
-    {
-      error: "Invalid property numeric values.",
-    },
-    { status: 400 }
-  );
-}
+    // 7. Validate optional coordinates
+    const numericLatitude =
+      latitude !== undefined && latitude !== null
+        ? Number(latitude)
+        : null;
 
-// 7. Validate optional coordinates
-const numericLatitude =
-  latitude !== undefined && latitude !== null
-    ? Number(latitude)
-    : null;
+    const numericLongitude =
+      longitude !== undefined && longitude !== null
+        ? Number(longitude)
+        : null;
 
-const numericLongitude =
-  longitude !== undefined && longitude !== null
-    ? Number(longitude)
-    : null;
+    if (
+      (numericLatitude !== null &&
+        (!Number.isFinite(numericLatitude) ||
+          numericLatitude < -90 ||
+          numericLatitude > 90)) ||
+      (numericLongitude !== null &&
+        (!Number.isFinite(numericLongitude) ||
+          numericLongitude < -180 ||
+          numericLongitude > 180))
+    ) {
+      return NextResponse.json(
+        {
+          error: "Invalid location coordinates.",
+        },
+        { status: 400 }
+      );
+    }
 
-if (
-  (numericLatitude !== null &&
-    (!Number.isFinite(numericLatitude) ||
-      numericLatitude < -90 ||
-      numericLatitude > 90)) ||
-  (numericLongitude !== null &&
-    (!Number.isFinite(numericLongitude) ||
-      numericLongitude < -180 ||
-      numericLongitude > 180))
-) {
-  return NextResponse.json(
-    {
-      error: "Invalid location coordinates.",
-    },
-    { status: 400 }
-  );
-}
-    // 6. Create property
+    // 8. Create property
     const property = await prisma.property.create({
-     data: {
-  ownerId: user.id,
+      data: {
+        ownerId: user.id,
 
-  title: normalizedTitle,
-  description: normalizedDescription,
+        title: normalizedTitle,
+        description: normalizedDescription,
 
-  type: normalizedType,
-  city: normalizedCity,
-  locality: normalizedLocality,
+        type: normalizedType,
+        city: normalizedCity,
+        locality: normalizedLocality,
 
-  latitude: numericLatitude,
-  longitude: numericLongitude,
+        latitude: numericLatitude,
+        longitude: numericLongitude,
 
-  rent: numericRent,
-  area: numericArea,
-  bedrooms: numericBedrooms,
-  bathrooms: numericBathrooms,
+        rent: numericRent,
+        area: numericArea,
+        bedrooms: numericBedrooms,
+        bathrooms: numericBathrooms,
 
-  furnishing: normalizedFurnishing,
+        furnishing: normalizedFurnishing,
 
-  status: typeof body.status === "string" && body.status ? body.status : "PUBLISHED",
-},
+        status: typeof body.status === "string" && body.status ? body.status : "PUBLISHED",
+      },
       select: {
         id: true,
         ownerId: true,
@@ -187,7 +220,7 @@ if (
       },
     });
 
-    // 7. Return created property
+    // 9. Return created property
     return NextResponse.json(
       {
         message: "Property created successfully.",
@@ -207,33 +240,32 @@ if (
   }
 }
 
-
 export async function GET() {
   try {
     const properties = await prisma.property.findMany({
       where: {
         status: { in: ["PUBLISHED", "DRAFT"] },
       },
-      orderBy : {
-        createdAt : "desc"
+      orderBy: {
+        createdAt: "desc",
       },
-      include : {
-        images : {
-          orderBy : {
-            sortOrder : "asc"
-          }
+      include: {
+        images: {
+          orderBy: {
+            sortOrder: "asc",
+          },
         },
-        owner : {
-          select : {
-            id : true,
-            name : true,
-            createdAt : true
-          }
-        }
-      }
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+          },
+        },
+      },
     });
 
-        const formattedProperties = properties.map((property) => ({
+    const formattedProperties = properties.map((property) => ({
       id: property.id,
       title: property.title,
       description: property.description,
@@ -242,9 +274,12 @@ export async function GET() {
       locality: property.locality,
       latitude: property.latitude,
       longitude: property.longitude,
-      rent: typeof property.rent === "object" && property.rent && "toNumber" in property.rent
-        ? property.rent.toNumber()
-        : Number(property.rent),
+      rent:
+        typeof property.rent === "object" &&
+        property.rent &&
+        "toNumber" in property.rent
+          ? property.rent.toNumber()
+          : Number(property.rent),
       area: property.area,
       bedrooms: property.bedrooms,
       bathrooms: property.bathrooms,
@@ -259,24 +294,29 @@ export async function GET() {
       })),
 
       owner: {
-        id: property.owner.id,
-        name: property.owner.name,
-        createdAt: property.owner.createdAt,
+        id: property.owner?.id ?? "unknown",
+        name: property.owner?.name ?? "Landlord",
+        createdAt: property.owner?.createdAt ?? new Date().toISOString(),
       },
 
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
     }));
 
+    if (formattedProperties.length === 0) {
+      return NextResponse.json({
+        properties: getFallbackProperties(),
+      });
+    }
+
     return NextResponse.json({
       properties: formattedProperties,
     });
   } catch (error) {
-    console.error("Fetch properties error:", error);
+    console.error("Fetch properties error (using fallback static data):", error);
 
-    return NextResponse.json(
-      { message: "Unable to fetch properties." },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      properties: getFallbackProperties(),
+    });
   }
 }

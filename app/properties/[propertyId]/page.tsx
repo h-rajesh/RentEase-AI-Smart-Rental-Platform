@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import prisma from "@/lib/prisma";
-import { formatINR } from "@/lib/rentease-data";
+import { formatINR, PROPERTIES } from "@/lib/rentease-data";
 import { adaptApiProperty } from "@/lib/rentease-property-adapter";
 
 import PropertyDetailClient from "@/app/properties/[propertyId]/PropertyDetailClient";
@@ -14,63 +14,105 @@ interface PropertyPageProps {
 }
 
 async function getProperty(propertyId: string) {
-  const property = await prisma.property.findFirst({
-    where: {
-      id: propertyId,
-      status: "PUBLISHED",
-    },
-    include: {
-      images: {
-        orderBy: {
-          sortOrder: "asc",
+  try {
+    const property = await prisma.property.findFirst({
+      where: {
+        id: propertyId,
+        status: "PUBLISHED",
+      },
+      include: {
+        images: {
+          orderBy: {
+            sortOrder: "asc",
+          },
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+          },
         },
       },
-      owner: {
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-        },
-      },
-    },
-  });
+    });
 
-  if (!property) {
-    return null;
+    if (property) {
+      return {
+        id: property.id,
+        title: property.title,
+        description: property.description,
+        type: property.type,
+        city: property.city,
+        locality: property.locality,
+        latitude: property.latitude,
+        longitude: property.longitude,
+        rent:
+          typeof property.rent === "object" &&
+          property.rent &&
+          "toNumber" in property.rent
+            ? property.rent.toNumber()
+            : Number(property.rent),
+        area: property.area,
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        furnishing: property.furnishing,
+        status: property.status,
+
+        images: property.images.map((image) => ({
+          id: image.id,
+          url: image.url,
+          storageKey: image.storageKey,
+          sortOrder: image.sortOrder,
+        })),
+
+        owner: {
+          id: property.owner?.id ?? "unknown",
+          name: property.owner?.name ?? "Landlord",
+          createdAt: property.owner?.createdAt ?? new Date().toISOString(),
+        },
+
+        createdAt: property.createdAt,
+        updatedAt: property.updatedAt,
+      };
+    }
+  } catch (err) {
+    console.error("Error fetching property from DB (checking fallback):", err);
   }
 
-  return {
-    id: property.id,
-    title: property.title,
-    description: property.description,
-    type: property.type,
-    city: property.city,
-    locality: property.locality,
-    latitude: property.latitude,
-    longitude: property.longitude,
-    rent: property.rent.toNumber(),
-    area: property.area,
-    bedrooms: property.bedrooms,
-    bathrooms: property.bathrooms,
-    furnishing: property.furnishing,
-    status: property.status,
+  const mock = PROPERTIES.find((p) => p.id === propertyId);
+  if (mock) {
+    return {
+      id: mock.id,
+      title: mock.name,
+      description: mock.description,
+      type: mock.type,
+      city: mock.city,
+      locality: mock.locality,
+      latitude: null,
+      longitude: null,
+      rent: mock.rent,
+      area: mock.area,
+      bedrooms: mock.beds,
+      bathrooms: mock.baths,
+      furnishing: mock.furnishing,
+      status: "PUBLISHED",
+      images: mock.images.map((img, i) => ({
+        id: `${mock.id}-img-${i}`,
+        url: typeof img === "string" ? img : img.src,
+        storageKey: null,
+        sortOrder: i,
+      })),
+      owner: {
+        id: "landlord-1",
+        name: mock.landlord.name,
+        createdAt: new Date().toISOString(),
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
 
-    images: property.images.map((image) => ({
-      id: image.id,
-      url: image.url,
-      storageKey: image.storageKey,
-      sortOrder: image.sortOrder,
-    })),
-
-    owner: {
-      id: property.owner.id,
-      name: property.owner.name,
-      createdAt: property.owner.createdAt,
-    },
-
-    createdAt: property.createdAt,
-    updatedAt: property.updatedAt,
-  };
+  return null;
 }
 
 export async function generateMetadata({
