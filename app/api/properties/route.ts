@@ -346,11 +346,10 @@ export async function GET() {
       properties: formattedProperties,
     });
   } catch (error) {
-    console.error("Fetch properties error:", error);
+    console.error("Fetch properties error (falling back to static properties):", error);
 
-    return NextResponse.json(
-      { error: "Unable to fetch properties." },
-      { status: 500 },
-    );
+    return NextResponse.json({
+      properties: getFallbackProperties(),
+    });
   }
 }

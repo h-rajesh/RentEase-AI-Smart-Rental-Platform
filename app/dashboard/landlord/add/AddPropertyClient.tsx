@@ -1,6 +1,6 @@
 "use client";
 
-import { useState ,useRef} from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -102,290 +102,290 @@ export default function AddPropertyClient() {
 
   const [images, setImages] = useState<PropertyImageItem[]>([]);
 
-const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [errors, setErrors] =
     useState<Record<string, string | undefined>>({});
 
   const [loading, setLoading] =
-  useState(false);
+    useState(false);
 
-// Stores the ID of the draft created in the database.
-const [propertyId, setPropertyId] =
-  useState<string | null>(null);
+  // Stores the ID of the draft created in the database.
+  const [propertyId, setPropertyId] =
+    useState<string | null>(null);
 
-const [assessment, setAssessment] =
-  useState<Assessment | null>(null);
+  const [assessment, setAssessment] =
+    useState<Assessment | null>(null);
 
   const [submitted, setSubmitted] = useState(false);
 
-    const set = (
-      key: keyof PropertyForm,
-      value: string,
-    ) => {
-      setForm((current) => ({
-        ...current,
-        [key]: value,
-      }));
+  const set = (
+    key: keyof PropertyForm,
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
 
-      // Property details changed: previous assessment is no longer valid.
-      setAssessment(null);
+    // Property details changed: previous assessment is no longer valid.
+    setAssessment(null);
 
-      setErrors((current) => ({
-        ...current,
-        [key]: undefined,
-      }));
-    };
+    setErrors((current) => ({
+      ...current,
+      [key]: undefined,
+    }));
+  };
 
-const submit = async (
-  event: React.FormEvent<HTMLFormElement>,
-) => {
-  event.preventDefault();
+  const submit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
 
-  const next: Record<string, string> = {};
+    const next: Record<string, string> = {};
 
-  if (form.title.trim().length < 5) {
-    next.title =
-      "Give the listing a descriptive title.";
-  }
+    if (form.title.trim().length < 5) {
+      next.title =
+        "Give the listing a descriptive title.";
+    }
 
-  if (form.locality.trim().length < 3) {
-    next.locality =
-      "Add the locality or neighbourhood.";
-  }
+    if (form.locality.trim().length < 3) {
+      next.locality =
+        "Add the locality or neighbourhood.";
+    }
 
-  if (
-    !form.rent ||
-    Number(form.rent) < 1000
-  ) {
-    next.rent =
-      "Enter a monthly rent in rupees.";
-  }
+    if (
+      !form.rent ||
+      Number(form.rent) < 1000
+    ) {
+      next.rent =
+        "Enter a monthly rent in rupees.";
+    }
 
-  if (
-    !form.area ||
-    Number(form.area) < 150
-  ) {
-    next.area =
-      "Enter the carpet area in sq ft.";
-  }
+    if (
+      !form.area ||
+      Number(form.area) < 150
+    ) {
+      next.area =
+        "Enter the carpet area in sq ft.";
+    }
 
-  if (
-    form.description.trim().length < 40
-  ) {
-    next.description =
-      "Write at least 40 characters so tenants know what to expect.";
-  }
+    if (
+      form.description.trim().length < 40
+    ) {
+      next.description =
+        "Write at least 40 characters so tenants know what to expect.";
+    }
 
-  setErrors(next);
+    setErrors(next);
 
-  if (Object.keys(next).length > 0) {
-    return;
-  }
+    if (Object.keys(next).length > 0) {
+      return;
+    }
 
-  setLoading(true);
-  setAssessment(null);
+    setLoading(true);
+    setAssessment(null);
 
-  try {
-    const propertyPayload = {
-      title: form.title.trim(),
-      description: form.description.trim(),
-      type: form.type,
-      city: form.city,
-      locality: form.locality.trim(),
-      rent: Number(form.rent),
-      area: Number(form.area),
-      bedrooms: Number(form.beds),
-      bathrooms: Number(form.baths),
-      furnishing: form.furnishing,
-      amenities,
-      latitude: null,
-      longitude: null,
-    };
+    try {
+      const propertyPayload = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        type: form.type,
+        city: form.city,
+        locality: form.locality.trim(),
+        rent: Number(form.rent),
+        area: Number(form.area),
+        bedrooms: Number(form.beds),
+        bathrooms: Number(form.baths),
+        furnishing: form.furnishing,
+        amenities,
+        latitude: null,
+        longitude: null,
+      };
 
-    const response = await fetch(
-      propertyId
-        ? `/api/properties/${propertyId}`
-        : "/api/properties",
-      {
-        method: propertyId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        propertyId
+          ? `/api/properties/${propertyId}`
+          : "/api/properties",
+        {
+          method: propertyId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(propertyPayload),
         },
-        body: JSON.stringify(propertyPayload),
-      },
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Unable to create property."
       );
-    }
 
-    const savedPropertyId: string = data.property.id;
-    setPropertyId(savedPropertyId);
+      const data = await response.json();
 
-
-const pendingImages = images.filter((image) => image.file);
-
-for (const [index, image] of pendingImages.entries()) {
-  if (!image.file) continue;
-
-  const formData = new FormData();
-  formData.append("file", image.file);
-  formData.append(
-    "sortOrder",
-    String(images.findIndex((item) => item === image))
-  );
-
-  const imageResponse = await fetch(
-    `/api/properties/${savedPropertyId}/images`,
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
-
-  const imageData = await imageResponse.json();
-
-  if (!imageResponse.ok) {
-    throw new Error(
-      imageData.message ||
-      `Unable to upload image ${index + 1}.`
-    );
-  }
-
-  setImages((current) =>
-    current.map((item) =>
-      item === image
-        ? {
-            preview: imageData.image.url,
-            id: imageData.image.id,
-            url: imageData.image.url,
-            storageKey: imageData.image.storageKey,
-          }
-        : item
-    )
-  );
-}
-
-
-    // Generate the assessment using the server-side API.
-    const assessmentResponse = await fetch(
-      `/api/properties/${savedPropertyId}/assessment`,
-      {
-        method: "POST",
-      },
-    );
-
-    const assessmentData = await assessmentResponse.json();
-
-    if (!assessmentResponse.ok) {
-      throw new Error(
-        assessmentData.error || "Unable to generate property assessment.",
-      );
-    }
-
-    const serverAssessment = assessmentData.assessment;
-
-    // Prepare explanations for the existing assessment panel.
-    const issues: string[] = [];
-
-    if (images.length < 3) {
-      issues.push(
-        "Add at least three photos, including one exterior shot.",
-      );
-    }
-
-    if (serverAssessment.listedRentOutsideRange) {
-      issues.push(
-        "Listed rent is outside the estimated range. Admin review will be required.",
-      );
-    }
-
-    if (amenities.length < 3) {
-      issues.push(
-        "List the building amenities tenants filter by.",
-      );
-    }
-
-    if (form.description.trim().length < 140) {
-      issues.push(
-        "Expand the description with floor, facing and nearby landmarks.",
-      );
-    }
-
-    setAssessment({
-      score: serverAssessment.trustScore,
-      signals: serverAssessment.signals,
-      issues,
-      estimate: serverAssessment.estimate,
-      listed: Number(form.rent),
-    });
-    
-    toast.success("Property assessment completed", {
-      description: `Server-generated Trust Score: ${serverAssessment.trustScore}/100.`,
-    });
-  } catch (error) {
-    console.error(
-      "Create property error:",
-      error,
-    );
-
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Unable to create property.",
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-const handleSubmitForReview = async () => {
-  if (!propertyId || !assessment) {
-    toast.error("Save the property and generate its assessment first.");
-    return;
-  }
-
-  if (assessment.score < 75) {
-    toast.error("Your Trust Score must be at least 75 to submit.");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const response = await fetch(
-      `/api/properties/${propertyId}/submit`,
-      {
-        method: "POST",
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to create property."
+        );
       }
-    );
 
-    const data = await response.json();
+      const savedPropertyId: string = data.property.id;
+      setPropertyId(savedPropertyId);
 
-    if (!response.ok) {
-      throw new Error(
-        data.error || "Unable to submit property for review."
+
+      const pendingImages = images.filter((image) => image.file);
+
+      for (const [index, image] of pendingImages.entries()) {
+        if (!image.file) continue;
+
+        const formData = new FormData();
+        formData.append("file", image.file);
+        formData.append(
+          "sortOrder",
+          String(images.findIndex((item) => item === image))
+        );
+
+        const imageResponse = await fetch(
+          `/api/properties/${savedPropertyId}/images`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const imageData = await imageResponse.json();
+
+        if (!imageResponse.ok) {
+          throw new Error(
+            imageData.message ||
+            `Unable to upload image ${index + 1}.`
+          );
+        }
+
+        setImages((current) =>
+          current.map((item) =>
+            item === image
+              ? {
+                preview: imageData.image.url,
+                id: imageData.image.id,
+                url: imageData.image.url,
+                storageKey: imageData.image.storageKey,
+              }
+              : item
+          )
+        );
+      }
+
+
+      // Generate the assessment using the server-side API.
+      const assessmentResponse = await fetch(
+        `/api/properties/${savedPropertyId}/assessment`,
+        {
+          method: "POST",
+        },
       );
+
+      const assessmentData = await assessmentResponse.json();
+
+      if (!assessmentResponse.ok) {
+        throw new Error(
+          assessmentData.error || "Unable to generate property assessment.",
+        );
+      }
+
+      const serverAssessment = assessmentData.assessment;
+
+      // Prepare explanations for the existing assessment panel.
+      const issues: string[] = [];
+
+      if (images.length < 3) {
+        issues.push(
+          "Add at least three photos, including one exterior shot.",
+        );
+      }
+
+      if (serverAssessment.listedRentOutsideRange) {
+        issues.push(
+          "Listed rent is outside the estimated range. Admin review will be required.",
+        );
+      }
+
+      if (amenities.length < 3) {
+        issues.push(
+          "List the building amenities tenants filter by.",
+        );
+      }
+
+      if (form.description.trim().length < 140) {
+        issues.push(
+          "Expand the description with floor, facing and nearby landmarks.",
+        );
+      }
+
+      setAssessment({
+        score: serverAssessment.trustScore,
+        signals: serverAssessment.signals,
+        issues,
+        estimate: serverAssessment.estimate,
+        listed: Number(form.rent),
+      });
+
+      toast.success("Property assessment completed", {
+        description: `Server-generated Trust Score: ${serverAssessment.trustScore}/100.`,
+      });
+    } catch (error) {
+      console.error(
+        "Create property error:",
+        error,
+      );
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to create property.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!propertyId || !assessment) {
+      toast.error("Save the property and generate its assessment first.");
+      return;
     }
 
-    setSubmitted(true);
+    if (assessment.score < 75) {
+      toast.error("Your Trust Score must be at least 75 to submit.");
+      return;
+    }
 
-    toast.success("Property submitted for Admin review.");
-  } catch (error) {
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Unable to submit property."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/properties/${propertyId}/submit`,
+        {
+          method: "POST",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to submit property for review."
+        );
+      }
+
+      setSubmitted(true);
+
+      toast.success("Property submitted for Admin review.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to submit property."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleAmenity = (amenity: string) => {
     setAmenities((current) =>
@@ -397,121 +397,121 @@ const handleSubmitForReview = async () => {
     setAssessment(null);
   };
 
-const handleImageSelect = (
-  event: React.ChangeEvent<HTMLInputElement>,
-) => {
-  const files = Array.from(
-    event.target.files ?? [],
-  );
-
-  if (files.length === 0) {
-    return;
-  }
-
-  const validFiles = files.filter((file) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error(
-        `${file.name} is not a valid image.`,
-      );
-
-      return false;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error(
-        `${file.name} is larger than 5 MB.`,
-      );
-
-      return false;
-    }
-
-    return true;
-  });
-
-  const remainingSlots = 10 - images.length;
-
-  const filesToAdd = validFiles.slice(
-    0,
-    remainingSlots,
-  );
-
-  if (validFiles.length > remainingSlots) {
-    toast.error(
-      "You can upload a maximum of 10 images.",
+  const handleImageSelect = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(
+      event.target.files ?? [],
     );
-  }
 
-  const newImages = filesToAdd.map((file) => ({
-    file,
-    preview: URL.createObjectURL(file),
-  }));
-
-  setImages((current) => [
-    ...current,
-    ...newImages,
-  ]);
-
-  setAssessment(null);
-
-  // Allows selecting the same file again later.
-  event.target.value = "";
-};
-const removeImage = async (index: number) => {
-  const image = images[index];
-
-  if (!image) return;
-
-  // If the image is already saved, delete it from the backend first.
-  if (image.id) {
-    if (!propertyId) {
-      toast.error("Property ID is missing.");
+    if (files.length === 0) {
       return;
     }
 
-    try {
-      const response = await fetch(
-        `/api/properties/${propertyId}/images`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            imageId: image.id,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || "Unable to delete image."
+    const validFiles = files.filter((file) => {
+      if (!file.type.startsWith("image/")) {
+        toast.error(
+          `${file.name} is not a valid image.`,
         );
+
+        return false;
       }
 
-      toast.success("Image deleted successfully.");
-    } catch (error) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(
+          `${file.name} is larger than 5 MB.`,
+        );
+
+        return false;
+      }
+
+      return true;
+    });
+
+    const remainingSlots = 10 - images.length;
+
+    const filesToAdd = validFiles.slice(
+      0,
+      remainingSlots,
+    );
+
+    if (validFiles.length > remainingSlots) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Unable to delete image."
+        "You can upload a maximum of 10 images.",
       );
-      return;
     }
-  }
 
-  // Remove from the UI only after backend deletion succeeds.
-  if (image.file) {
-    URL.revokeObjectURL(image.preview);
-  }
+    const newImages = filesToAdd.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
 
-  setImages((current) =>
-    current.filter((_, imageIndex) => imageIndex !== index)
-  );
+    setImages((current) => [
+      ...current,
+      ...newImages,
+    ]);
 
-  setAssessment(null);
-};
+    setAssessment(null);
+
+    // Allows selecting the same file again later.
+    event.target.value = "";
+  };
+  const removeImage = async (index: number) => {
+    const image = images[index];
+
+    if (!image) return;
+
+    // If the image is already saved, delete it from the backend first.
+    if (image.id) {
+      if (!propertyId) {
+        toast.error("Property ID is missing.");
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/properties/${propertyId}/images`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              imageId: image.id,
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || "Unable to delete image."
+          );
+        }
+
+        toast.success("Image deleted successfully.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Unable to delete image."
+        );
+        return;
+      }
+    }
+
+    // Remove from the UI only after backend deletion succeeds.
+    if (image.file) {
+      URL.revokeObjectURL(image.preview);
+    }
+
+    setImages((current) =>
+      current.filter((_, imageIndex) => imageIndex !== index)
+    );
+
+    setAssessment(null);
+  };
 
   return (
     <DashboardShell
@@ -538,7 +538,7 @@ const removeImage = async (index: number) => {
       ]}
       actions={
         <Button
-          
+
           variant="outline"
         >
           <Link href="/dashboard/landlord">
@@ -824,95 +824,95 @@ const removeImage = async (index: number) => {
 
           {/* Images */}
           <FormField label="Property images">
-           <div className="flex flex-wrap gap-3">
-  {images.map((image, index) => (
-    <div
-      key={`${image.preview}-${index}`}
-      className="relative size-24 overflow-hidden rounded-lg border border-border bg-surface"
-    >
-      <img
-        src={image.preview}
-        alt={`Property image ${index + 1}`}
-        className="h-full w-full object-cover"
-      />
+            <div className="flex flex-wrap gap-3">
+              {images.map((image, index) => (
+                <div
+                  key={`${image.preview}-${index}`}
+                  className="relative size-24 overflow-hidden rounded-lg border border-border bg-surface"
+                >
+                  <img
+                    src={image.preview}
+                    alt={`Property image ${index + 1}`}
+                    className="h-full w-full object-cover"
+                  />
 
-      <button
-        type="button"
-        onClick={() => removeImage(index)}
-        className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-white"
-        aria-label={`Remove image ${index + 1}`}
-      >
-        ×
-      </button>
-    </div>
-  ))}
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-white"
+                    aria-label={`Remove image ${index + 1}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
 
-  {images.length < 10 && (
-    <button
-      type="button"
-      onClick={() =>
-        fileInputRef.current?.click()
-      }
-      className="grid size-24 place-items-center rounded-lg border border-dashed border-border bg-surface text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-      aria-label="Add property image"
-    >
-      <ImagePlus className="size-5" />
-    </button>
-  )}
+              {images.length < 10 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    fileInputRef.current?.click()
+                  }
+                  className="grid size-24 place-items-center rounded-lg border border-dashed border-border bg-surface text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  aria-label="Add property image"
+                >
+                  <ImagePlus className="size-5" />
+                </button>
+              )}
 
-  <input
-    ref={fileInputRef}
-    type="file"
-    accept="image/jpeg,image/png,image/webp"
-    multiple
-    onChange={handleImageSelect}
-    className="hidden"
-  />
-</div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+            </div>
 
-<p className="mt-2 text-xs text-muted-foreground">
-  Upload up to 10 images. Maximum 5 MB per image.
-</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Upload up to 10 images. Maximum 5 MB per image.
+            </p>
           </FormField>
 
           {/* Save Draft and Submit for Review */}
-{submitted ? (
-  <div className="rounded-lg border border-border bg-muted p-4 text-center">
-    <ShieldCheck className="mx-auto mb-2 size-6" />
-    <p className="font-semibold">Submitted for Admin Review</p>
-    <p className="mt-1 text-sm text-muted-foreground">
-      Your property is awaiting Admin approval.
-    </p>
-  </div>
-) : (
-  <div className="space-y-3">
-    <Button
-      type="submit"
-      size="lg"
-      className="w-full"
-      disabled={loading}
-    >
-      {loading ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <ShieldCheck className="size-4" />
-      )}
-      {loading ? "Saving and generating assessment…" : "Save"}
-    </Button>
+          {submitted ? (
+            <div className="rounded-lg border border-border bg-muted p-4 text-center">
+              <ShieldCheck className="mx-auto mb-2 size-6" />
+              <p className="font-semibold">Submitted for Admin Review</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Your property is awaiting Admin approval.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+                {loading ? "Saving and generating assessment…" : "Save"}
+              </Button>
 
-    {assessment && assessment.score >= 75 && (
-      <Button
-        type="button"
-        size="lg"
-        className="w-full"
-        disabled={loading || !propertyId}
-        onClick={handleSubmitForReview}
-      >
-        Submit for Review
-      </Button>
-    )}
-  </div>
-)}
+              {assessment && assessment.score >= 75 && (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="w-full"
+                  disabled={loading || !propertyId}
+                  onClick={handleSubmitForReview}
+                >
+                  Submit for Review
+                </Button>
+              )}
+            </div>
+          )}
         </form>
 
         {/* Assessment */}

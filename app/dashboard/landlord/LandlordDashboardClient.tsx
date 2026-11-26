@@ -8,7 +8,8 @@ import {
   User,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 
 import {
   Tabs,
@@ -75,21 +76,109 @@ const NOTIFICATIONS = [
   },
 ];
 
+type LandlordProperty = {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  city: string;
+  locality: string;
+  rent: number;
+  area: number;
+  bedrooms: number;
+  bathrooms: number;
+  furnishing: string;
+  amenities: string[];
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  images: {
+    id: string;
+    url: string;
+    sortOrder: number;
+  }[];
+  latestAssessment: {
+    trustScore: number;
+    signals: unknown;
+    estimatedRentLow: number;
+    estimatedRentMid: number;
+    estimatedRentHigh: number;
+    listedRentOutsideRange: boolean;
+    propertyUpdatedAt: string;
+    createdAt: string;
+  } | null;
+};
+
 export default function LandlordDashboardClient() {
-  const monthly = MINE.reduce(
-    (sum, property) =>
-      sum + property.rent,
-    0,
+  const [properties, setProperties] = useState<LandlordProperty[]>([]);
+  const [loadingProperties, setLoadingProperties] = useState(true);
+  const [propertiesError, setPropertiesError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchProperties() {
+      try {
+        setLoadingProperties(true);
+        setPropertiesError("");
+
+        const response = await fetch("/api/landlord/properties", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to load your properties.");
+        }
+
+        if (active) {
+          setProperties(data.properties ?? []);
+        }
+      } catch (error) {
+        if (active) {
+          setPropertiesError(
+            error instanceof Error
+              ? error.message
+              : "Something went wrong while loading properties."
+          );
+        }
+      } finally {
+        if (active) {
+          setLoadingProperties(false);
+        }
+      }
+    }
+
+    fetchProperties();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const monthly = properties.reduce(
+    (sum, property) => sum + property.rent,
+    0
   );
 
-  const averageTrustScore =
-    Math.round(
-      MINE.reduce(
+  const currentAssessments = properties.filter(
+    (property) =>
+      property.latestAssessment &&
+      new Date(property.latestAssessment.propertyUpdatedAt).getTime() ===
+      new Date(property.updatedAt).getTime()
+  );
+
+  const averageTrustScore = currentAssessments.length
+    ? Math.round(
+      currentAssessments.reduce(
         (sum, property) =>
-          sum + property.trustScore,
-        0,
-      ) / MINE.length,
-    );
+          sum + property.latestAssessment!.trustScore,
+        0
+      ) / currentAssessments.length
+    )
+    : "—";
 
   return (
     <DashboardShell
@@ -115,20 +204,21 @@ export default function LandlordDashboardClient() {
         },
       ]}
       actions={
-        <Button >
-          <Link href="/dashboard/landlord/add">
-            <Plus className="size-4" />
-            Add Property
-          </Link>
-        </Button>
+        <Link
+          href="/dashboard/landlord/add"
+          className={buttonVariants()}
+        >
+          <Plus className="size-4" />
+          Add Property
+        </Link>
       }
     >
       {/* Stats */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="My properties"
-          value={MINE.length}
-          hint="2 active, 1 pending"
+          value={loadingProperties ? "..." : properties.length}
+          hint="All your property listings"
         />
 
         <StatCard
@@ -139,14 +229,15 @@ export default function LandlordDashboardClient() {
 
         <StatCard
           label="Open requests"
-          value={2}
-          hint="1 new today"
+          value="—"
+          hint="Rental request tracking not connected"
           tone="warm"
         />
 
         <StatCard
           label="Avg. Trust Score"
-          value={averageTrustScore}
+          value={loadingProperties ? "..." : averageTrustScore}
+          hint={`${currentAssessments.length} current assessments`}
         />
       </div>
 
@@ -193,62 +284,90 @@ export default function LandlordDashboardClient() {
             description="Everything you have listed on RentEase."
           >
             <div className="space-y-3">
-              {MINE.map((property) => (
-                <div
-                  key={property.id}
-                  className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-surface p-3"
-                >
-                  <img
-                    src={typeof property.images[0] === "string" ? property.images[0] : property.images[0]?.src}
-                    alt={property.name}
-                    loading="lazy"
-                    className="size-16 rounded-lg object-cover"
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">
-                      {property.name}
-                    </p>
-
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {property.locality},{" "}
-                      {property.city} ·{" "}
-                      {property.beds} BHK ·{" "}
-                      {property.area} sqft
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">
-                      {formatINR(
-                        property.rent,
-                      )}
-                    </p>
-
-                    <p className="text-xs text-muted-foreground">
-                      {property.status}
-                    </p>
-                  </div>
-
-                  <RiskChip
-                    score={
-                      property.trustScore
-                    }
-                  />
-
-                  <Button
-                    
-                    size="sm"
-                    variant="outline"
+              {loadingProperties ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  Loading your properties...
+                </p>
+              ) : propertiesError ? (
+                <p className="py-8 text-center text-sm text-destructive">
+                  {propertiesError}
+                </p>
+              ) : properties.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="font-medium">You haven't added any properties yet.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Add your first property to start building your portfolio.
+                  </p>
+                  <Link
+                    href="/dashboard/landlord/add"
+                    className={buttonVariants({ className: "mt-4" })}
                   >
-                    <Link
-                      href={`/properties/${property.id}`}
-                    >
-                      View
-                    </Link>
-                  </Button>
+                    <Plus className="mr-2 size-4" />
+                    Add Property
+                  </Link>
                 </div>
-              ))}
+              ) : (
+                properties.map((property) => {
+                  const assessment = property.latestAssessment;
+
+                  const hasCurrentAssessment =
+                    assessment &&
+                    new Date(assessment.propertyUpdatedAt).getTime() ===
+                    new Date(property.updatedAt).getTime();
+
+                  return (
+                    <div
+                      key={property.id}
+                      className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-surface p-3"
+                    >
+                      {property.images[0]?.url ? (
+                        <img
+                          src={property.images[0].url}
+                          alt={property.title}
+                          loading="lazy"
+                          className="size-16 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="grid size-16 place-items-center rounded-lg bg-muted text-xs text-muted-foreground">
+                          No image
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{property.title}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {property.locality}, {property.city} · {property.bedrooms} BHK ·{" "}
+                          {property.area} sqft
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-sm font-semibold">
+                          {formatINR(property.rent)}
+                        </p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {property.status.toLowerCase().replaceAll("_", " ")}
+                        </p>
+                      </div>
+
+                      {hasCurrentAssessment ? (
+                        <RiskChip score={assessment.trustScore} />
+                      ) : (
+                        <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+                          Not assessed
+                        </span>
+                      )}
+
+                      <Link
+                        href={`/dashboard/landlord/properties/${property.id}`}
+                        className={buttonVariants({ size: "sm", variant: "outline" })}
+                      >
+                        View
+                      </Link>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </Panel>
         </TabsContent>
@@ -307,48 +426,58 @@ export default function LandlordDashboardClient() {
           className="mt-6"
         >
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {MINE.map((property) => (
-              <Panel
-                key={property.id}
-                title={property.name}
-                description={`Trust Score ${property.trustScore}/100`}
-              >
-                <ul className="space-y-2.5">
-                  {property.signals.map(
-                    (signal) => (
-                      <li
-                        key={signal.label}
-                      >
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-medium">
-                            {signal.label}
-                          </span>
+            {properties.length === 0 ? (
+              <p className="col-span-full py-8 text-center text-sm text-muted-foreground">
+                {loadingProperties ? "Loading trust assessments..." : "No property assessments found."}
+              </p>
+            ) : (
+              properties.map((property) => {
+                const assessment = property.latestAssessment;
+                const signals = Array.isArray(assessment?.signals)
+                  ? (assessment.signals as { label: string; score: number }[])
+                  : [];
 
-                          <span className="tabular-nums text-muted-foreground">
-                            {signal.score}
-                          </span>
-                        </div>
-
-                        <div className="mt-1.5 h-1.5 rounded-full bg-surface-strong">
-                          <div
-                            className="h-full rounded-full bg-primary"
-                            style={{
-                              width: `${signal.score}%`,
-                            }}
-                          />
-                        </div>
-                      </li>
-                    ),
-                  )}
-                </ul>
-
-                <p className="mt-4 text-xs text-muted-foreground">
-                  AI-assisted risk indicator.
-                  Improve the weakest signals
-                  to raise the score.
-                </p>
-              </Panel>
-            ))}
+                return (
+                  <Panel
+                    key={property.id}
+                    title={property.title}
+                    description={
+                      assessment
+                        ? `Trust Score ${assessment.trustScore}/100`
+                        : "Not assessed yet"
+                    }
+                  >
+                    {signals.length > 0 ? (
+                      <ul className="space-y-2.5">
+                        {signals.map((signal) => (
+                          <li key={signal.label}>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-medium">{signal.label}</span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {signal.score}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 rounded-full bg-surface-strong">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${signal.score}%` }}
+                              />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="py-4 text-xs text-muted-foreground">
+                        No assessment data available. Generate an assessment from the Add/Edit Property page.
+                      </p>
+                    )}
+                    <p className="mt-4 text-xs text-muted-foreground">
+                      AI-assisted risk indicator. Improve the weakest signals to raise the score.
+                    </p>
+                  </Panel>
+                );
+              })
+            )}
           </div>
         </TabsContent>
 
@@ -364,52 +493,50 @@ export default function LandlordDashboardClient() {
             description="Listed rent compared with the modelled range."
           >
             <div className="space-y-3">
-              {MINE.map((property) => {
-                const verdict =
-                  priceVerdict(
-                    property.rent,
-                    property.estimate,
+              {properties.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  {loadingProperties ? "Loading rent estimates..." : "No property estimates found."}
+                </p>
+              ) : (
+                properties.map((property) => {
+                  const assessment = property.latestAssessment;
+                  const low = assessment?.estimatedRentLow;
+                  const high = assessment?.estimatedRentHigh;
+
+                  return (
+                    <div
+                      key={property.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">
+                          {property.title}
+                        </p>
+
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {low && high
+                            ? `Expected ${formatINR(low)} – ${formatINR(high)}`
+                            : "Assessment required for estimate"}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-sm font-semibold">
+                          {formatINR(property.rent)} listed
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                          {assessment?.listedRentOutsideRange
+                            ? "Outside expected range"
+                            : assessment
+                              ? "Within expected range"
+                              : "Not assessed"}
+                        </p>
+                      </div>
+                    </div>
                   );
-
-                return (
-                  <div
-                    key={property.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">
-                        {property.name}
-                      </p>
-
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Expected{" "}
-                        {formatINR(
-                          property.estimate
-                            .low,
-                        )}{" "}
-                        –{" "}
-                        {formatINR(
-                          property.estimate
-                            .high,
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="text-sm font-semibold">
-                        {formatINR(
-                          property.rent,
-                        )}{" "}
-                        listed
-                      </p>
-
-                      <p className="text-xs text-muted-foreground">
-                        {verdict.label}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                })
+              )}
             </div>
           </Panel>
         </TabsContent>
