@@ -41,14 +41,16 @@ export async function POST(
             where: {
                 id: propertyId,
                 ownerId: user.id,
-                status: "DRAFT",
+                status: {
+                    in: ["DRAFT", "REJECTED"],
+                },
             },
             select: { id: true },
         });
 
         if (!property) {
             return NextResponse.json(
-                { message: "Draft property not found or access denied." },
+                { message: "Editable property not found or access denied." },
                 { status: 404 }
             );
         }
@@ -217,9 +219,12 @@ export async function DELETE(
             );
         }
 
-        if (property.status !== "DRAFT") {
+        if (
+            property.status !== "DRAFT" &&
+            property.status !== "REJECTED"
+        ) {
             return NextResponse.json(
-                { message: "Images can only be deleted from draft properties." },
+                { message: "Images can only be modified on draft or rejected properties." },
                 { status: 409 }
             );
         }
@@ -239,31 +244,16 @@ export async function DELETE(
         }
 
         // Delete the stored file when it has a Supabase Storage key.
-        // Base64 fallback images have a null storageKey.
-        if (image.storageKey) {
-            const supabase = createSupabaseAdminClient();
-
-            const { error: storageError } = await supabase.storage
-                .from("property-images")
-                .remove([image.storageKey]);
-
-            if (storageError) {
-                console.error("Supabase image deletion error:", storageError);
-
-                return NextResponse.json(
-                    { message: "Unable to delete image from storage." },
-                    { status: 500 }
-                );
-            }
-        }
-
+        
+        // Delete the database record first, after rechecking ownership and status.
         await prisma.$transaction(async (tx) => {
-            // Recheck status and ownership before changing the database.
             const currentProperty = await tx.property.findFirst({
                 where: {
                     id: property.id,
                     ownerId: user.id,
-                    status: "DRAFT",
+                    status: {
+                        in: ["DRAFT", "REJECTED"],
+                    },
                 },
                 select: { id: true },
             });
@@ -272,8 +262,19 @@ export async function DELETE(
                 throw new Error("PROPERTY_NOT_EDITABLE");
             }
 
+            const currentImage = await tx.propertyImage.findFirst({
+                where: {
+                    id: image.id,
+                    propertyId: property.id,
+                },
+            });
+
+            if (!currentImage) {
+                throw new Error("IMAGE_NOT_FOUND");
+            }
+
             await tx.propertyImage.delete({
-                where: { id: image.id },
+                where: { id: currentImage.id },
             });
 
             await tx.property.update({
@@ -282,26 +283,49 @@ export async function DELETE(
             });
         });
 
+        // Remove the physical file only after the database transaction succeeds.
+        if (image.storageKey) {
+            const supabase = createSupabaseAdminClient();
+
+            const { error: storageError } = await supabase.storage
+                .from("property-images")
+                .remove([image.storageKey]);
+
+            if (storageError) {
+                console.error(
+                    "Image database record deleted, but Supabase cleanup failed:",
+                    storageError
+                );
+
+                // The database no longer references this image.
+                // Storage cleanup can be retried separately.
+                return NextResponse.json({
+                    message: "Image removed from the property. Storage cleanup is pending.",
+                    imageId: image.id,
+                    cleanupPending: true,
+                });
+            }
+        }
+
         return NextResponse.json({
             message: "Property image deleted successfully.",
             imageId: image.id,
+            cleanupPending: false,
         });
+
     } catch (error) {
-        if (
-            error instanceof Error &&
-            error.message === "PROPERTY_NOT_EDITABLE"
-        ) {
-            return NextResponse.json(
-                { message: "Images can only be deleted from draft properties." },
-                { status: 409 }
-            );
-        }
+       if (error instanceof Error && error.message === "PROPERTY_NOT_EDITABLE") {
+    return NextResponse.json(
+        { message: "This property can no longer be edited." },
+        { status: 409 }
+    );
+}
 
-        console.error("Delete property image error:", error);
-
-        return NextResponse.json(
-            { message: "Unable to delete property image." },
-            { status: 500 }
-        );
+if (error instanceof Error && error.message === "IMAGE_NOT_FOUND") {
+    return NextResponse.json(
+        { message: "Image not found for this property." },
+        { status: 404 }
+    );
+}
     }
 }

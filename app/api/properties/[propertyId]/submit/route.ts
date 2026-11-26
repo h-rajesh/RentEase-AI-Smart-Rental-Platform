@@ -114,6 +114,9 @@ export async function POST(
       },
       data: {
         status: "SUBMITTED",
+
+        // A status transition must not invalidate the property assessment.
+        updatedAt: property.updatedAt,
       },
     });
 

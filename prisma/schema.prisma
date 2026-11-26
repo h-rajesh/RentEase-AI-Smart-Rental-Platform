@@ -65,6 +65,7 @@ model Property {
   amenities String[] @default([])
 
   status PropertyStatus @default(DRAFT)
+  rejectionReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -49,9 +49,12 @@ export async function PUT(
       );
     }
 
-    if (existingProperty.status !== "DRAFT") {
+    if (
+      existingProperty.status !== "DRAFT" &&
+      existingProperty.status !== "REJECTED"
+    ) {
       return NextResponse.json(
-        { error: "Only draft properties can be edited." },
+        { error: "Only draft or rejected properties can be edited." },
         { status: 409 },
       );
     }
@@ -193,7 +196,7 @@ export async function PUT(
       where: {
         id: propertyId,
         ownerId: user.id,
-        status: "DRAFT",
+        status: existingProperty.status,
         updatedAt: existingProperty.updatedAt,
       },
       data: {
@@ -210,6 +213,10 @@ export async function PUT(
         bathrooms: numericBathrooms,
         furnishing: normalizedFurnishing,
         amenities: normalizedAmenities,
+
+        // Editing a rejected property returns it to DRAFT.
+        status: "DRAFT",
+        rejectionReason: null,
       },
     });
 
@@ -233,7 +240,7 @@ export async function PUT(
     });
 
     return NextResponse.json({
-      message: "Draft property updated successfully.",
+      message: "Property updated successfully. Please reassess before submitting for review.",
       property: updatedProperty,
     });
   } catch (error) {
@@ -248,51 +255,51 @@ export async function PUT(
 
 
 export async function GET(
-  request : Request,
-  context : RouteContext,
+  request: Request,
+  context: RouteContext,
 ) {
   try {
-    const { user,error } = await requireRole(["LANDLORD"]);
+    const { user, error } = await requireRole(["LANDLORD"]);
 
-    if(error === "UNAUTHORIZED"){
+    if (error === "UNAUTHORIZED") {
       return NextResponse.json(
-        {error : "Authentication Required"},
-        {status : 401},
+        { error: "Authentication Required" },
+        { status: 401 },
       )
     }
 
-    if(error === "FORBIDDEN" || !user){
+    if (error === "FORBIDDEN" || !user) {
       return NextResponse.json(
-        {error : "Only landlords can access this property"},
-        {status : 403}
+        { error: "Only landlords can access this property" },
+        { status: 403 }
       )
     }
 
-    const {propertyId} = await context.params;
-    
+    const { propertyId } = await context.params;
+
     const property = await prisma.property.findFirst({
-      where : {
-        id : propertyId,
-        ownerId : user.id,
+      where: {
+        id: propertyId,
+        ownerId: user.id,
       },
-      include : {
-        images : {
-          orderBy : {
-            sortOrder : "asc",
+      include: {
+        images: {
+          orderBy: {
+            sortOrder: "asc",
           },
         },
-        assessments : {
-          orderBy : {
-            createdAt : "desc",
+        assessments: {
+          orderBy: {
+            createdAt: "desc",
           },
-          take : 1,
+          take: 1,
         },
       },
     });
-    if(!property){
+    if (!property) {
       return NextResponse.json(
-        {error : "Property not found"},
-        {status : 404}
+        { error: "Property not found" },
+        { status: 404 }
       );
     }
     const assessment = property.assessments[0] ?? null;
@@ -314,6 +321,7 @@ export async function GET(
         furnishing: property.furnishing,
         amenities: property.amenities,
         status: property.status,
+        rejectionReason: property.rejectionReason,
         createdAt: property.createdAt,
         updatedAt: property.updatedAt,
 
@@ -325,26 +333,26 @@ export async function GET(
 
         latestAssessment: assessment
           ? {
-              trustScore: assessment.trustScore,
-              signals: assessment.signals,
-              estimatedRentLow: Number(assessment.estimatedRentLow),
-              estimatedRentMid: Number(assessment.estimatedRentMid),
-              estimatedRentHigh: Number(assessment.estimatedRentHigh),
-              listedRentOutsideRange:
-                assessment.listedRentOutsideRange,
-              propertyUpdatedAt: assessment.propertyUpdatedAt,
-              createdAt: assessment.createdAt,
-            }
+            trustScore: assessment.trustScore,
+            signals: assessment.signals,
+            estimatedRentLow: Number(assessment.estimatedRentLow),
+            estimatedRentMid: Number(assessment.estimatedRentMid),
+            estimatedRentHigh: Number(assessment.estimatedRentHigh),
+            listedRentOutsideRange:
+              assessment.listedRentOutsideRange,
+            propertyUpdatedAt: assessment.propertyUpdatedAt,
+            createdAt: assessment.createdAt,
+          }
           : null,
       },
     });
   } catch (error) {
-    console.error("Fetch landlord property error:",error);
+    console.error("Fetch landlord property error:", error);
 
     return NextResponse.json(
-      {error : "Unable to fetch property details."},
-      {status : 500}
+      { error: "Unable to fetch property details." },
+      { status: 500 }
     )
-    
+
   }
 }
